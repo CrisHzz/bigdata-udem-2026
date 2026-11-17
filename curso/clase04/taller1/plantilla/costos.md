@@ -9,11 +9,28 @@ Equipo: Cristian Camilo Hernandez · Cuenta que reporta (anfitrión): Cristian C
 > apunta a la base actual (CURSO) y da el error «Invalid identifier».
 
 ```sql
+USE ROLE ACCOUNTADMIN;      -- rol administrador de tu cuenta de prueba: puede ver el consumo
+USE WAREHOUSE COMPUTE_WH;   -- el cómputo que ejecuta la consulta
+USE DATABASE CURSO;         -- INFORMATION_SCHEMA pertenece a una base: sin esta línea da
+                            -- «Invalid identifier INFORMATION_SCHEMA.WAREHOUSE_METERING_HISTORY»
 SELECT ROUND(SUM(CREDITS_USED), 4) AS CREDITOS
 FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.WAREHOUSE_METERING_HISTORY(
        DATE_RANGE_START => '2026-11-12'::DATE,
        WAREHOUSE_NAME => 'COMPUTE_WH'));
 ```
+
+Alternativa sin base activa (tarda hasta 3 h en reflejar el consumo):
+
+```sql
+USE ROLE ACCOUNTADMIN;      -- único rol con acceso a SNOWFLAKE.ACCOUNT_USAGE en tu cuenta
+USE WAREHOUSE COMPUTE_WH;
+SELECT ROUND(SUM(CREDITS_USED), 4) AS CREDITOS
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE WAREHOUSE_NAME = 'COMPUTE_WH' AND START_TIME >= '2026-11-10'::DATE;
+```
+
+**Rol:** `ACCOUNTADMIN`. Leer el consumo de créditos exige el privilegio `MONITOR USAGE` (primera consulta) o acceso a la base `SNOWFLAKE` (alternativa); en tu cuenta de prueba los tiene `ACCOUNTADMIN`. Con otro rol, como `PUBLIC`, la consulta falla o devuelve vacío.
+
 
 | Día medido | Warehouse | Tamaño | Créditos |
 |---|---|---|---|
