@@ -59,8 +59,7 @@ if TYPE_CHECKING:  # pyspark solo hace falta para los tipos: este módulo carga 
 
     from pipeline.herramientas.corrida import Corrida
 
-# hash_fila y COLUMNAS_METADATOS no los usa este archivo todavía: son las piezas con las que el
-# equipo escribe agregar_metadatos.
+# hash_fila la usa agregar_metadatos; COLUMNAS_METADATOS es el orden que deben tener sus columnas.
 __all__ = [
     "COLUMNAS_METADATOS",
     "agregar_metadatos",
@@ -88,9 +87,18 @@ def agregar_metadatos(
     no depende de las otras columnas de metadatos y dos ingestas del mismo archivo dan el mismo
     hash fila por fila. Eso es lo que después permite deduplicar en silver.
     """
-    # PENDIENTE(equipo): hoy esta función devuelve df tal cual, sin metadatos. Por eso bronze
-    # no guarda de qué lote ni de qué archivo vino cada fila, y silver no puede deduplicar.
-    return df
+    from pyspark.sql import functions as F
+
+    originales = list(df.columns)
+    # El select se evalúa sobre df, así que el hash solo ve las columnas originales.
+    return df.select(
+        *originales,
+        F.lit(fecha_ingesta).cast("timestamp").alias("_fecha_ingesta"),
+        F.lit(id_lote).alias("_id_lote"),
+        hash_fila(originales).alias("_hash_fila"),
+        F.lit(fuente).alias("_fuente"),
+        F.lit(archivo_origen).alias("_archivo_origen"),
+    )
 
 
 def debe_ingestar(corrida: Corrida, tabla: str, mes: str) -> bool:
