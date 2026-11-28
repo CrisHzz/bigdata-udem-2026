@@ -48,9 +48,23 @@ DDL_TARIFA_POR_MILLA = (
     "TARIFA_POR_MILLA FLOAT)"
 )
 
+# Tabla del equipo CrisHzz: las columnas salen de crishzz_propina_por_lluvia (gold.py).
+# count y sum de enteros llegan como bigint (NUMBER(38,0)); la suma de propinas, como double.
+DDL_PROPINA_POR_LLUVIA = (
+    "CREATE TABLE IF NOT EXISTS {tabla} ("
+    "FECHA DATE, "
+    "BOROUGH VARCHAR, "
+    "EMPRESA VARCHAR, "
+    "NIVEL_LLUVIA VARCHAR, "
+    "VIAJES NUMBER(38,0), "
+    "PROPINA_TOTAL FLOAT, "
+    "VIAJES_CON_PROPINA NUMBER(38,0))"
+)
+
 # Cada entrada: la tabla de gold y el CREATE TABLE que se muestra para su tabla en Snowflake.
 TABLAS_A_CARGAR = [
     {"gold": "tarifa_por_milla_barrio", "ddl": DDL_TARIFA_POR_MILLA},
+    {"gold": "crishzz_propina_por_lluvia", "ddl": DDL_PROPINA_POR_LLUVIA},
 ]
 
 
