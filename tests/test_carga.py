@@ -13,7 +13,7 @@ import pytest
 
 from hueco import MES, corrida_a_mano
 from pipeline import carga
-from pipeline.gold import COLUMNAS_TARIFA_POR_MILLA
+from pipeline.gold import COLUMNAS_PROPINA_POR_LLUVIA, COLUMNAS_TARIFA_POR_MILLA
 from pipeline.herramientas import bodega
 
 pytest_plugins = ["p1_fixtures", "p4_fixtures"]
@@ -46,6 +46,17 @@ class Falsos:
         monkeypatch.setattr(carga, "cargar_gold", cargar)
 
 
+@pytest.fixture
+def solo_la_tabla_de_la_casa(monkeypatch):
+    """Estas pruebas miden la mecánica de la carga con una sola tabla: la de la casa.
+
+    La tabla del equipo tiene sus propias pruebas al final de este archivo.
+    """
+    casa = [e for e in carga.TABLAS_A_CARGAR if e["gold"] == "tarifa_por_milla_barrio"]
+    monkeypatch.setattr(carga, "TABLAS_A_CARGAR", casa)
+
+
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_main_verifica_y_carga_en_ese_orden(control_en_memoria, monkeypatch):
     falsos = Falsos(monkeypatch)
     resultados = carga.main(corrida_a_mano())
@@ -56,6 +67,7 @@ def test_main_verifica_y_carga_en_ese_orden(control_en_memoria, monkeypatch):
     ]
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_la_tabla_de_snowflake_es_la_del_entorno(control_en_memoria, monkeypatch):
     falsos = Falsos(monkeypatch)
     carga.main(corrida_a_mano())
@@ -79,6 +91,7 @@ def test_la_tabla_de_snowflake_es_la_del_entorno(control_en_memoria, monkeypatch
     )
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_registra_en_la_tabla_de_control(control_en_memoria, monkeypatch):
     Falsos(monkeypatch)
     carga.main(corrida_a_mano())
@@ -94,6 +107,7 @@ def test_registra_en_la_tabla_de_control(control_en_memoria, monkeypatch):
     assert registro["fuente"].endswith("/dev/gold/tarifa_por_milla_barrio/mes=2024-01")
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_sin_reprocesar_la_segunda_vez_se_salta_y_no_toca_snowflake(
     control_en_memoria, monkeypatch
 ):
@@ -108,6 +122,7 @@ def test_sin_reprocesar_la_segunda_vez_se_salta_y_no_toca_snowflake(
     assert len(control_en_memoria.registros) == 1
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_con_reprocesar_vuelve_a_cargar(control_en_memoria, monkeypatch):
     falsos = Falsos(monkeypatch)
     carga.main(corrida_a_mano())
@@ -144,7 +159,20 @@ def test_el_ddl_crea_solo_si_no_existe():
 
 
 def test_tablas_a_cargar_tiene_la_de_la_casa():
-    assert [e["gold"] for e in carga.TABLAS_A_CARGAR] == ["tarifa_por_milla_barrio"]
+    # Ya no es la única: el equipo sumó la suya.
+    assert "tarifa_por_milla_barrio" in [e["gold"] for e in carga.TABLAS_A_CARGAR]
+
+
+def test_tablas_a_cargar_tiene_la_del_equipo():
+    entradas = {e["gold"]: e["ddl"] for e in carga.TABLAS_A_CARGAR}
+    assert entradas["crishzz_propina_por_lluvia"] is carga.DDL_PROPINA_POR_LLUVIA
+
+
+def test_el_ddl_del_equipo_tiene_las_columnas_de_su_gold():
+    cuerpo = re.search(r"\((.*)\)", carga.DDL_PROPINA_POR_LLUVIA).group(1)
+    columnas = [definicion.split()[0].lower() for definicion in cuerpo.split(", ")]
+    assert columnas == COLUMNAS_PROPINA_POR_LLUVIA
+    assert "IF NOT EXISTS" in carga.DDL_PROPINA_POR_LLUVIA
 
 
 def test_el_codigo_no_crea_tablas():

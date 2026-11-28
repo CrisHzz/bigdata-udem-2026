@@ -48,6 +48,22 @@ def _viajes_de_gold(lake) -> int:
     return filas[0]
 
 
+@pytest.fixture
+def solo_la_tabla_de_la_casa(monkeypatch):
+    """Estas pruebas miden la mecánica del pipeline con una sola tabla de gold: la de la casa.
+
+    La tabla del equipo se prueba con el pipeline completo en
+    test_el_pipeline_tambien_construye_y_carga_la_tabla_del_equipo.
+    """
+    from pipeline import carga, gold
+
+    casa = "tarifa_por_milla_barrio"
+    monkeypatch.setattr(gold, "TABLAS_GOLD", {casa: gold.TABLAS_GOLD[casa]})
+    monkeypatch.setattr(
+        carga, "TABLAS_A_CARGAR", [e for e in carga.TABLAS_A_CARGAR if e["gold"] == casa]
+    )
+
+
 def _viajes_con_zona_conocida(lake) -> tuple[int, int]:
     """(viajes cuya zona está en el lookup, viajes cuya zona no está) en silver de la muestra."""
     viajes = lake.tabla("silver", TABLA_VIAJES)
@@ -59,6 +75,7 @@ def _viajes_con_zona_conocida(lake) -> tuple[int, int]:
 # --- el pipeline corre con las funciones de la casa ---------------------------------------------
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_pipeline_corre_con_los_huecos_vacios(lake):
     """bronze -> silver -> gold -> snowflake corren con lo que traen los .py y dejan registro."""
     r_bronze = lake.bronze()
@@ -101,6 +118,22 @@ def test_pipeline_corre_con_los_huecos_vacios(lake):
     }
 
 
+def test_el_pipeline_tambien_construye_y_carga_la_tabla_del_equipo(lake):
+    """Con las dos tablas de gold: las dos se registran y la del equipo suma los viajes válidos."""
+    lake.bronze()
+    lake.silver()
+
+    r_gold = lake.gold()
+    assert [(r.tabla, r.decision) for r in r_gold] == [
+        ("tarifa_por_milla_barrio", "REGISTRÓ"),
+        ("crishzz_propina_por_lluvia", "REGISTRÓ"),
+    ]
+    del_equipo = lake.tabla("gold", "crishzz_propina_por_lluvia")
+    assert del_equipo.agg({"viajes": "sum"}).first()[0] == VIAJES_VALIDOS
+
+    assert _decisiones(lake.carga()) == ["REGISTRÓ"] * 2
+
+
 def test_bronze_agrega_metadatos_solo_si_el_equipo_los_escribio(lake):
     """Con agregar_metadatos pendiente, bronze guarda las columnas originales y nada más."""
     lake.bronze()
@@ -124,6 +157,7 @@ def test_los_pasos_no_imprimen_banner_ni_cierre(lake, capsys):
 # --- la puerta: sin reprocesar se salta; con reprocesar, otro lote ------------------------------
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_segunda_corrida_sin_reprocesar_se_salta_en_todos_los_pasos(lake):
     lake.bronze()
     lake.silver()
@@ -378,6 +412,7 @@ def test_probar_mis_funciones_rechaza_un_nombre_que_no_es_del_equipo():
 # --- por la puerta de la clase: correr_bronze(), correr_silver()... con banner y cierre ---------
 
 
+@pytest.mark.usefixtures("solo_la_tabla_de_la_casa")
 def test_las_cuatro_funciones_de_correr_py_corren_el_pipeline_con_banner_y_cierre(
     lake, monkeypatch, capsys
 ):
