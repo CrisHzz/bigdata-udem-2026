@@ -44,7 +44,7 @@ incentivo para tener conductores en la calle con mal clima.
 | Capa | gold |
 | Archivo y función donde va | `src/pipeline/gold.py`: una función nueva `crishzz_propina_por_lluvia` y un auxiliar `_nivel_lluvia`, siguiendo el patrón de `_franja_del_dia` |
 | Qué se agrega o cambia | Columna `nivel_lluvia` y una tabla de gold propia: viajes, suma de propinas y viajes con propina por fecha, barrio y empresa |
-| Definición exacta | `nivel_lluvia`: `seca` si `lluvia_mm` = 0; `ligera` si es mayor que 0 y hasta 10 mm (10,0 incluido); `fuerte` si es mayor que 10 mm. Si `lluvia_mm` es nulo o negativo: `sin_dato` (la fila no se descarta). Grano y clave: `fecha`, `borough`, `empresa` (`nivel_lluvia` depende solo de la fecha, así que no cambia el grano). Barrio nulo: `Desconocido`, como en el gold de la casa |
+| Definición exacta | `nivel_lluvia`: `seca` si `lluvia_mm` = 0; `ligera` si es mayor que 0 y hasta 10 mm (10,0 incluido); `fuerte` si es mayor que 10 mm. Si `lluvia_mm` es nulo o negativo: `sin_dato` (la fila no se descarta). Grano: una fila por `fecha`, `borough` y `empresa`; clave: `fecha`, `borough`, `empresa`, `nivel_lluvia` (`nivel_lluvia` depende solo de la fecha, así que no cambia el grano; ver sección 9). Barrio nulo: `Desconocido`, como en el gold de la casa |
 | Por qué lo necesita la pregunta | El gold de la casa no guarda la propina ni la lluvia del día, y la tabla del Taller 1 solo traía la propina como promedio de grupo. Para comparar la propina por nivel de lluvia necesito la suma de propinas y el número de viajes, y así ponderar bien (trampa 2 del Taller 1) |
 
 Además, como pide el entregable 1: escribir `agregar_metadatos` (`bronze.py`) y `deduplicar`
@@ -97,4 +97,6 @@ la pregunta.
 
 | Fecha | Qué cambió | Por qué |
 |---|---|---|
-| | | |
+| 27 nov. 2026 | Se agregó `nivel_lluvia` a la clave de la tabla de gold: pasa de `fecha, borough, empresa` a `fecha, borough, empresa, nivel_lluvia` (`LLAVES_DE_GOLD` en `gold.py`) | `nivel_lluvia` tiene que ir en el `groupBy` para salir como columna, así que la clave queda igual a las columnas por las que se agrupa. Como depende solo de la fecha, no cambia el grano ni el número de filas: es una aclaración, no un cambio de lo que mide la tabla |
+| 27 nov. 2026 | Se fijaron las columnas de la tabla de gold: `fecha`, `borough`, `empresa`, `nivel_lluvia`, `viajes`, `propina_total` y `viajes_con_propina`. No guarda promedios ni `lluvia_mm` | Las sumas permiten ponderar en Snowflake con `SUM / SUM` (trampa 2 del Taller 1). Guardar `lluvia_mm` la repetiría en cada fila de barrio y empresa (trampa 1); los días por nivel salen con `COUNT(DISTINCT fecha)` |
+| 27 nov. 2026 | Se ajustaron pruebas de la casa que asumían una sola tabla de gold: dos que exigían que la de la casa fuera la única (`test_gold.py` y `test_carga.py`), y ocho que contaban un resultado por paso (`test_carga.py` y `test_pasos.py`). Estas ocho ahora corren solo con la tabla de la casa, con el fixture `solo_la_tabla_de_la_casa` | Al sumar la tabla propia esas pruebas fallaban y el CI saldría en rojo, aunque el pipeline funcionaba. Miden la mecánica del pipeline con una tabla y siguen midiendo lo mismo. La tabla del equipo tiene sus propias pruebas, y una nueva en `test_pasos.py` corre el pipeline con las dos tablas y comprueba que la del equipo suma los mismos viajes válidos de silver |

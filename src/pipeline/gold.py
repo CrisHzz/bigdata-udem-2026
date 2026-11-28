@@ -97,10 +97,67 @@ def tarifa_por_milla_por_barrio(enriquecido: DataFrame) -> DataFrame:
     )
 
 
+# --- tabla del equipo CrisHzz: propina por nivel de lluvia (Taller 2) -------------------------
+# Pregunta: en enero de 2024, ¿la propina por viaje es mayor en días de lluvia fuerte que en días
+# secos? Se guardan sumas y no promedios, para ponderar en Snowflake: SUM(propina) / SUM(viajes).
+
+COLUMNAS_PROPINA_POR_LLUVIA = [
+    "fecha",
+    "borough",
+    "empresa",
+    "nivel_lluvia",
+    "viajes",
+    "propina_total",
+    "viajes_con_propina",
+]
+
+# Más de este valor es lluvia fuerte (el mismo umbral del Taller 1). 10.0 exacto es ligera.
+UMBRAL_LLUVIA_FUERTE_MM = 10.0
+
+
+def _nivel_lluvia(lluvia_mm: F.Column) -> F.Column:
+    """seca (0 mm), ligera (más de 0 y hasta 10 mm), fuerte (más de 10 mm).
+
+    Un nulo (el día no tiene clima) o un negativo (valor imposible) queda como sin_dato: la fila
+    no se descarta, para que la suma de viajes siga cuadrando con silver.
+    """
+    return (
+        F.when(lluvia_mm.isNull() | (lluvia_mm < 0), "sin_dato")
+        .when(lluvia_mm == 0, "seca")
+        .when(lluvia_mm <= UMBRAL_LLUVIA_FUERTE_MM, "ligera")
+        .otherwise("fuerte")
+    )
+
+
+def crishzz_propina_por_lluvia(enriquecido: DataFrame) -> DataFrame:
+    """Por fecha, barrio, empresa y nivel de lluvia: viajes, propina total y viajes con propina.
+
+    nivel_lluvia depende solo de la fecha, así que no cambia el grano; va en la clave porque
+    tiene que estar en el groupBy para salir como columna.
+    """
+    con_nivel = enriquecido.select(
+        F.col("pickup_date").alias("fecha"),
+        F.coalesce(F.col("borough"), F.lit(BARRIO_DESCONOCIDO)).alias("borough"),
+        F.col("empresa"),
+        _nivel_lluvia(F.col("lluvia_mm")).alias("nivel_lluvia"),
+        F.col("propina"),
+    )
+    return (
+        con_nivel.groupBy("fecha", "borough", "empresa", "nivel_lluvia")
+        .agg(
+            F.count(F.lit(1)).alias("viajes"),
+            F.round(F.sum("propina"), 2).alias("propina_total"),
+            F.sum(F.when(F.col("propina") > 0, 1).otherwise(0)).alias("viajes_con_propina"),
+        )
+        .select(*COLUMNAS_PROPINA_POR_LLUVIA)
+    )
+
+
 # nombre de la tabla en gold -> función que la arma a partir del enriquecido. El equipo agrega la
 # suya aquí.
 TABLAS_GOLD = {
     "tarifa_por_milla_barrio": tarifa_por_milla_por_barrio,
+    "crishzz_propina_por_lluvia": crishzz_propina_por_lluvia,
 }
 
 
@@ -108,6 +165,7 @@ TABLAS_GOLD = {
 # Al agregar tu tabla a TABLAS_GOLD, agrega aquí sus columnas llave.
 LLAVES_DE_GOLD = {
     "tarifa_por_milla_barrio": ("fecha", "borough", "franja"),
+    "crishzz_propina_por_lluvia": ("fecha", "borough", "empresa", "nivel_lluvia"),
 }
 
 
